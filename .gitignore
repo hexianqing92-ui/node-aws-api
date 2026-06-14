@@ -1,0 +1,11 @@
+node_modules
+dist
+src/generated/prisma
+.env
+.env.*
+!.env.example
+coverage
+npm-debug.log*
+scripts/aws/config.env
+Dockerfile.local
+.DS_Store

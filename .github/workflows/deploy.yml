@@ -1,0 +1,78 @@
+name: Deploy to ECS Fargate
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag to deploy
+        required: true
+        default: latest
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-southeast-1
+      PROJECT_NAME: node-aws-api
+      ENVIRONMENT_NAME: dev
+      STACK_NAME: node-aws-api-dev
+      DATABASE_NAME: node_aws_api
+      DATABASE_USERNAME: app_user
+      IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/node_aws_api?schema=public
+      - run: npm test
+      - run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create ECR repository if missing
+        run: |
+          aws ecr describe-repositories --repository-names "$PROJECT_NAME" >/dev/null 2>&1 || \
+          aws ecr create-repository \
+            --repository-name "$PROJECT_NAME" \
+            --image-scanning-configuration scanOnPush=true >/dev/null
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE_URI="$REGISTRY/$PROJECT_NAME:$IMAGE_TAG"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "CONTAINER_IMAGE=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Deploy CloudFormation
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/cloudformation/ecs-fargate.yml \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              ProjectName="$PROJECT_NAME" \
+              EnvironmentName="$ENVIRONMENT_NAME" \
+              ContainerImage="$CONTAINER_IMAGE" \
+              DatabaseName="$DATABASE_NAME" \
+              DatabaseUsername="$DATABASE_USERNAME" \
+              DatabasePassword="${{ secrets.DATABASE_PASSWORD }}"
