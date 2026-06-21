@@ -9,6 +9,7 @@ const envSchema = z.object({
     .default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1).optional(),
+  DATABASE_SSL: z.enum(["disable", "require"]).optional(),
 });
 
 export const env = envSchema.parse(process.env);

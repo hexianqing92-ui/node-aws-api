@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { env } from "../config/env.js";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -10,16 +11,16 @@ export function getPrisma() {
     return globalForPrisma.prisma;
   }
 
-  if (!process.env.DATABASE_URL) {
+  if (!env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required for database-backed routes.");
   }
 
+  const databaseSsl =
+    env.DATABASE_SSL ?? (env.NODE_ENV === "production" ? "require" : "disable");
+
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL,
-    // RDS presents an AWS-managed CA that node-pg does not trust by default.
-    // In production (ECS -> RDS) enable TLS but skip strict CA verification.
-    // Local Docker Postgres has no TLS, so SSL stays off there.
-    ...(process.env.NODE_ENV === "production"
+    connectionString: env.DATABASE_URL,
+    ...(databaseSsl === "require"
       ? { ssl: { rejectUnauthorized: false } }
       : {}),
   });
