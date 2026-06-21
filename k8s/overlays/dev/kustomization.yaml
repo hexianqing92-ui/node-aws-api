@@ -1,0 +1,9 @@
+namespace: node-aws-api-dev
+
+resources:
+  - ../../base
+
+images:
+  - name: node-aws-api
+    newName: 136455701915.dkr.ecr.us-east-1.amazonaws.com/node-aws-api
+    newTag: a9684ab
